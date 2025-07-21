@@ -1,0 +1,149 @@
+# template.yaml
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: gcp-basic-vm-template
+  title: Basic GCP VM Environment
+  description: Deploys a basic GCP VPC and Compute Engine VM for application hosting.
+  tags:
+    - gcp
+    - infrastructure
+    - vm
+    - terraform
+spec:
+  owner: platform-team
+  type: infrastructure
+
+  parameters:
+    - title: Environment Details
+      properties:
+        gcpProjectId:
+          title: GCP Project ID
+          type: string
+          description: The GCP Project ID to deploy into.
+          ui:field: GoogleCloudProjectPicker # If you have a custom picker
+          ui:options:
+            pickerConfig:
+              kind: Project
+              filter:
+                - type: organizationId
+                  value: "your-gcp-organization-id" # Optional: Filter projects by organization
+        gcpRegion:
+          title: GCP Region
+          type: string
+          description: The GCP region for deployment (e.g., us-central1).
+          enum:
+            - us-central1
+            - europe-west1
+            - asia-southeast1
+          default: us-central1
+        environmentName:
+          title: Environment Name
+          type: string
+          description: A unique name for this environment (e.g., dev-my-app-001).
+          pattern: '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$' # Valid DNS-compatible name
+          ui:options:
+            ui:autofocus: true
+        instanceMachineType:
+          title: VM Machine Type
+          type: string
+          description: The machine type for the Compute Engine VM.
+          enum:
+            - e2-small
+            - e2-medium
+            - e2-highcpu-2
+          default: e2-medium
+    - title: Repository Setup
+      properties:
+        repoUrl:
+          title: Repository Location
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts:
+              - github.com
+            defaultOrg: your-github-org # or gitlab/bitbucket org
+            defaultUser: your-github-user # or gitlab/bitbucket user
+
+  steps:
+    - id: fetch-base
+      name: Fetch Base Template
+      action: fetch:template
+      input:
+        url: ./skeleton # Points to a sub-directory in your template repo
+        copyWithoutRender:
+          - .github/workflows/* # Example: copy CI/CD workflows without templating
+
+    - id: generate-id
+      name: Generate Unique Resource ID
+      action: create:id
+      input:
+        entity: ${{ parameters.environmentName }}
+        suffix: true
+        lower: true
+        maxlength: 10 # Example: short suffix for unique names
+
+    - id: publish
+      name: Publish
+      action: publish:github
+      input:
+        allowedHosts: ["github.com"]
+        repoUrl: ${{ parameters.repoUrl }}
+        defaultBranch: main
+        # Token for GitHub comes from Backstage backend config
+
+    - id: generate-terraform
+      name: Generate Terraform files
+      action: fs:rename
+      input:
+        files:
+          - from: 'terraform/main.tf.tmpl'
+            to: 'terraform/main.tf'
+          - from: 'terraform/variables.tf.tmpl'
+            to: 'terraform/variables.tf'
+          - from: 'terraform/backend.tf.tmpl'
+            to: 'terraform/backend.tf'
+        # You would typically generate these from a skeleton or specific module structure
+
+    - id: run-terraform-plan
+      name: Run Terraform Plan
+      action: run:terraform # This is a custom action you'd implement or use a plugin
+      input:
+        command: plan
+        workingDirectory: ./terraform
+        credentials:
+          gcpProjectId: ${{ parameters.gcpProjectId }}
+          # Service account key path or Workload Identity config
+
+    - id: approve-terraform-plan
+      name: Await Approval for Terraform Apply
+      action: create:ticket # Example: Integrate with Jira or similar
+      input:
+        title: "Approve Terraform Plan for ${{ parameters.environmentName }}"
+        description: "Please review the Terraform plan for the new GCP environment: {{output.terraform_plan_link}}"
+        assignee: platform-engineer-group
+        # This step would pause the workflow and wait for external approval
+
+    - id: run-terraform-apply
+      name: Run Terraform Apply
+      action: run:terraform
+      input:
+        command: apply
+        workingDirectory: ./terraform
+        credentials:
+          gcpProjectId: ${{ parameters.gcpProjectId }}
+        autoApprove: true # Once approved in previous step, auto-approve this.
+
+    - id: register-component
+      name: Register in Catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml' # Path to the generated catalog-info.yaml
+
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps.publish.output.remoteUrl }}
+      - title: Open in GCP Console (VM)
+        url: https://console.cloud.google.com/compute/instances?project=${{ parameters.gcpProjectId }}&_ga=2.238977931.1114532455.1719946800-2023164479.1719946800&authuser=0&text=${{ steps.generate-id.output.result }} # Dynamic URL
