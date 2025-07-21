@@ -1,0 +1,92 @@
+# .github/workflows/provision-infra.yaml
+name: GCP Infra Provisioning
+
+on:
+  workflow_dispatch: # Allows manual trigger, and can be triggered programmatically by IDP
+    inputs:
+      gcp_project_id:
+        description: 'GCP Project ID'
+        required: true
+        type: string
+      gcp_region:
+        description: 'GCP Region'
+        required: true
+        type: string
+        default: 'us-central1'
+      environment_name:
+        description: 'Environment Name'
+        required: true
+        type: string
+      instance_machine_type:
+        description: 'VM Machine Type'
+        required: false
+        type: string
+        default: 'e2-medium'
+
+env:
+  TF_WORKING_DIR: ./terraform # Assuming terraform files are in a 'terraform' subdirectory
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write' # Crucial for GCP Workload Identity Federation
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: 'auth'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          workload_identity_provider: 'projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/providers/<PROVIDER_ID>'
+          service_account: 'terraform-sa@<GCP_PROJECT_ID>.iam.gserviceaccount.com'
+          # You'll need to configure this in GCP and GitHub secrets
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ github.event.inputs.gcp_project_id }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.x.x
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Plan
+        run: terraform plan -input=false -out=tfplan.out \
+          -var="gcp_project_id=${{ github.event.inputs.gcp_project_id }}" \
+          -var="gcp_region=${{ github.event.inputs.gcp_region }}" \
+          -var="environment_name=${{ github.event.inputs.environment_name }}" \
+          -var="instance_machine_type=${{ github.event.inputs.instance_machine_type }}"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      # Optional: Add a step for manual approval or policy checks here
+      # - name: Request Manual Approval (e.g., via Slack/Jira)
+      #   run: |
+      #     echo "Terraform plan generated. Requires approval."
+      #     # Trigger a webhook to a notification system
+
+      - name: Terraform Apply
+        run: terraform apply -input=false tfplan.out
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        # For production, you'd likely want a separate apply workflow triggered after approval,
+        # or a step that waits for a specific signal.
+
+      - name: Get Web Server IP
+        id: output_ip
+        run: echo "web_server_ip=$(terraform output -raw web_server_ip)" >> "$GITHUB_OUTPUT"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Update Backstage Catalog (if your template doesn't do it)
+        # This is an example, depends on how your Backstage setup works
+        # Could be a custom action or a script that calls the Backstage API
+        run: |
+          echo "Update Backstage catalog with IP: ${{ steps.output_ip.outputs.web_server_ip }}"
+          # Call Backstage API to update the catalog-info.yaml or add annotations
