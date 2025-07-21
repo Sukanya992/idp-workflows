@@ -76,7 +76,7 @@ spec:
 
     - id: generate-id
       name: Generate Unique Resource ID
-      action: create:id
+      #action: create:id
       input:
         entity: ${{ parameters.environmentName }}
         suffix: true
