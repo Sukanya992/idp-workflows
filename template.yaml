@@ -74,14 +74,14 @@ spec:
         copyWithoutRender:
           - .github/workflows/* # Example: copy CI/CD workflows without templating
 
-    - id: generate-id
-      name: Generate Unique Resource ID
+    #- id: generate-id
+     # name: Generate Unique Resource ID
       #action: create:id
-      input:
-        entity: ${{ parameters.environmentName }}
-        suffix: true
-        lower: true
-        maxlength: 10 # Example: short suffix for unique names
+      #input:
+       # entity: ${{ parameters.environmentName }}
+        #suffix: true
+        #lower: true
+        #maxlength: 10 # Example: short suffix for unique names
 
     - id: publish
       name: Publish
