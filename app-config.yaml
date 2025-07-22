@@ -1,0 +1,7 @@
+integrations:
+  github:
+    - host: github.com
+      # It's highly recommended to use an environment variable for the token:
+      token: ${GITHUB_TOKEN}
+      # OR, for testing, you can put the token directly (less secure):
+      # token: "ghp_YOUR_GENERATED_GITHUB_PAT_HERE"
