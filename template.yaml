@@ -83,13 +83,13 @@ spec:
         #lower: true
         #maxlength: 10 # Example: short suffix for unique names
 
-    - id: publish
-      name: Publish
-      action: publish:github
-      input:
-        allowedHosts: ["github.com"]
-        repoUrl: ${{ parameters.repoUrl }}
-        defaultBranch: main
+    #- id: publish
+      #name: Publish
+      #action: publish:github
+      #input:
+        #allowedHosts: ["github.com"]
+        #repoUrl: ${{ parameters.repoUrl }}
+        #defaultBranch: main
         # Token for GitHub comes from Backstage backend config
 
     - id: generate-terraform
